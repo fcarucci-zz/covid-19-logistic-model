@@ -8,25 +8,56 @@ import matplotlib.pyplot as plt
 
 import dateutil.parser as dp
 
-url = "https://raw.githubusercontent.com/pcm-dpc/COVID-19/master/dati-andamento-nazionale/dpc-covid19-ita-andamento-nazionale.csv"
+start_date = dp.parse('2020-01-01T00:00:00').replace(tzinfo=None)
 
-df = pd.read_csv(url)
+def get_data(country):
+    dates = []
+    values = []
+
+    import requests
+    r = requests.get('https://api.covid19api.com/total/country/%s/status/deaths' % country)
+    r = r.json()
+    for x in r:
+        date = dp.parse(x['Date']).replace(tzinfo=None)
+        print date
+        dates.append((date - start_date).days)
+        values.append(x['Cases']);
+
+    d = {'date': dates, 'value': values}
+    df = pd.DataFrame(data=d)
+
+    return df
+
+def get_us_data():
+    return get_data('us')
+
+def get_ita_data():
+    #url = "https://raw.githubusercontent.com/pcm-dpc/COVID-19/master/dati-andamento-nazionale/dpc-covid19-ita-andamento-nazionale.csv"
+    #df = pd.read_csv(url)
+
+    url = "https://raw.githubusercontent.com/pcm-dpc/COVID-19/master/dati-regioni/dpc-covid19-ita-regioni.csv"
+    df = pd.read_csv(url)
+
+    is_region = df.denominazione_regione == "Toscana"
+    df = df[is_region]
+
+    table = df.loc[:,['data','deceduti']]
+#table = df.loc[:,['data','terapia_intensiva']]
+    table['data'] = table['data'].map(lambda x : (dp.parse(x) - start_date).days)
+    return table
 
 
-deaths = df.loc[:,['data','deceduti']]
-#deaths = df.loc[:,['data','terapia_intensiva']]
+table = get_data('spain')
 
-start_date = dp.parse('2020-01-01T00:00:00')
 
-deaths['data'] = deaths['data'].map(lambda x : (dp.parse(x) - start_date).days)
 
-print deaths
+print table
 
 def logistic_model(x, a, b, c):
     return c / (1 + np.exp(-(x - b) / a))
 
-x = list(deaths.iloc[:, 0])
-y = list(deaths.iloc[:, 1])
+x = list(table.iloc[:, 0])
+y = list(table.iloc[:, 1])
 
 fit = curve_fit(logistic_model, x, y, p0 = [2, 100, 10000])
 
@@ -51,7 +82,8 @@ solution = int(fsolve(lambda x : logistic_model(x, a, b, c) - int(c), b))
 print "end  = %d %s" % (solution, start_date + timedelta(days=solution))
 
 
-pred_x = list(range(max(x),solution))
+pred_x = list(range(max(x), solution))
+
 plt.rcParams['figure.figsize'] = [7, 7]
 plt.rc('font', size=14)
 # Real data
@@ -63,6 +95,6 @@ plt.plot(x+pred_x, [logistic_model(i,fit[0][0] + errors[0],fit[0][1] + errors[1]
 # Predicted exponential curve
 plt.legend()
 plt.xlabel("Days since 1 January 2020")
-plt.ylabel("Total number of deaths")
+plt.ylabel("Total number of deaths in Toscana")
 plt.ylim((min(y)*0.9,c*1.1))
 plt.show()
